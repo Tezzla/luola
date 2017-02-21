@@ -11,14 +11,34 @@
             [clojure.string :as string]
             [clojure.java.io :as io]
             [clojure.pprint :refer [pprint]]
-            [cheshire.core :as json]))
-
-;;; Game state
+            [cheshire.core :as json])
+  (:import java.util.UUID))
 
 (defonce board (atom {}))
+(defonce action-proposals (atom {}))
+
+(defn uuid []
+  (str (java.util.UUID/randomUUID)))
 
 (defn timestamp []
    (.getTime (java.util.Date.)))
+
+(def PlayerAction (s/enum "move" "attack"))
+
+(def ActionTarget (s/enum "north" "east" "south" "west"))
+
+(defn make-action [action-type target]
+  {:type action-type
+   :target target})
+
+; TODO end of turn timestamp
+(defn set-action-proposal! [actor action]
+  (swap! action-proposals
+         assoc (:name actor)
+         {:action action
+          :timestamp (timestamp)}))
+
+;;; Game state
 
 (defn put-board [board x y val]
    (assoc board y
@@ -131,6 +151,9 @@
 
 ;;; Handler
 
+(defn status-no-player []
+  (status (ok "no") 404))
+
 (def api-handler
    (api
       {:swagger
@@ -174,7 +197,14 @@
            (let [player (find-authorized-player @board name pass)]
              (if player
                (ok player)
-               (status (ok "no") 404)))))))
+               (status-no-player))))
+         (GET "/act" []
+           :query-params [name :- s/Str, pass :- s/Str, action :- PlayerAction, {target :- ActionTarget nil}]
+           (let [player (find-authorized-player @board name pass)]
+             (if player
+               (do (set-action-proposal! player (make-action action target))
+                   (ok))
+               (status-no-player)))))))
 
 
 ;;; Startup and shutdown
