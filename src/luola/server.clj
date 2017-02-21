@@ -29,13 +29,13 @@
 
 (defn parse-board [string]
    (loop [board {} x 0 y 0 data (seq string)]
-      (cond 
+      (cond
          (empty? data)
             board
          (= (first data) \newline)
             (recur board 0 (+ y 1) (rest data))
          (= (first data) \.)
-            (recur 
+            (recur
                (put-board board x y :empty)
                (+ x 1) y (rest data))
          (= (first data) \space)
@@ -50,7 +50,7 @@
 (defn empty-pos [board]
    (reduce
       (fn [taken y]
-         (reduce 
+         (reduce
             (fn [taken x]
                (let [val (get-board board x y false)]
                   (if (= val :empty)
@@ -64,14 +64,37 @@
    {:type :player
     :name name
     :pass pass})
-             
+
+(defn player? [thingie]
+  (and (map? thingie)
+       (= (:type thingie) :player)))
+
+(defn find-player [board name]
+  (reduce (fn [state [y xs]]
+            (reduce (fn [state [x val]]
+                      (or state
+                          (if (and (player? val)
+                                   (= (:name val) name))
+                            val)))
+                    state
+                    xs))
+          nil
+          board))
+
+(defn find-authorized-player [board name pass]
+  (let [player (find-player board name)]
+    (when (= (:pass player) pass)
+      player)))
+
 (defn add-player! [name pass]
    (swap! board
       (fn [board]
-         (let [pos (empty-pos board)]
+        (if (find-player board name)
+          board
+          (let [pos (empty-pos board)]
             (if pos
-               (put-board board (nth pos 0) (nth pos 1) (make-player name pass))
-               board)))))
+              (put-board board (nth pos 0) (nth pos 1) (make-player name pass))
+              board))))))
 
 (defn reset-game! []
    (reset! board
@@ -84,7 +107,7 @@
                      #...........................#
                      #.....#......................#
                      #.....#.....................#
-                     #.....#....................# 
+                     #.....#....................#
                      ###########################")))
 
 (defn unparse-board [board player]
@@ -105,7 +128,7 @@
                   (recur (+ x 1) y (cons \P out)))
             :else
                (recur (+ x 1) y (cons \? out))))))
-               
+
 ;;; Handler
 
 (def api-handler
@@ -121,7 +144,7 @@
           (resp/temporary-redirect "/index.html")))
 
       (GET "/pic/:type" []
-         :summary "get player pic" 
+         :summary "get player pic"
          (ok "foo"))
 
       (context "/api" []
@@ -129,19 +152,29 @@
          (GET "/alive" []
             :summary "check whether server is running"
             (ok "I feel happy!"))
-         
+
          (GET "/reset" []
             :summary "reset game"
-            (ok (reset-game!)))
-         
+            (do (reset-game!)
+                (ok (unparse-board @board nil))))
+
          (GET "/board" []
             :query-params [name :- s/Str]
             (ok (unparse-board @board name)))
-               
+
          (GET "/add-player" []
             :query-params [name :- s/Str, pass :- s/Str]
-            (let [me (add-player! name pass)]
-               (ok me))))))
+            (let [new-board (add-player! name pass)]
+              (if-let [player (find-authorized-player @board name pass)]
+                (ok (unparse-board @board (:name player)))
+                (status (ok "unacceptable") 403))))
+
+         (GET "/player" []
+           :query-params [name :- s/Str, pass :- s/Str]
+           (let [player (find-authorized-player @board name pass)]
+             (if player
+               (ok player)
+               (status (ok "no") 404)))))))
 
 
 ;;; Startup and shutdown
@@ -170,7 +203,7 @@
 
 ;;; Dev mode entry
 
-(defn reset [] 
+(defn reset []
    (if server
       (do
          (println "Stopping luola")
@@ -182,4 +215,3 @@
 (defn go []
    (println "reset from go")
    (reset))
-
