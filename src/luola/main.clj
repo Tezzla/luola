@@ -22,7 +22,7 @@
       (fn [[turn board moves]]
          (op turn board moves))))
 
-(def turn-duration 200) ;; in ms
+(def turn-duration 1000) ;; in ms
 
 
 (defn uuid []
@@ -51,16 +51,16 @@
        (= (:type thingie) :player)))
 
 (defn fold-named [op state board]
-   (reduce
+   (reduce 
       (fn [state [y xs]]
-         (reduce
+         (reduce 
             (fn [state [x vals]]
                (if (:name (first vals))
                   (op state x y (first vals))
                   state))
             state xs))
       nil board))
-
+    
 ;; board name -> {:x x :y y :player player-map}
 (defn find-player [board name]
    (fold-named
@@ -93,7 +93,7 @@
       :else [x y]))
 
 (defn maybe-move [board info dir]
-   (let [x (:x info) y (:y info)
+   (let [x (:x info) y (:y info) 
          old (get-board board x y [])
          [xp yp] (step x y dir)]
       (if (can-move? board xp yp)
@@ -102,7 +102,7 @@
                (put-board x y (rest old))
                (put-board xp yp (cons (first old) new))))
          board)))
-
+      
 (defn step-world [board actions]
    (let [actions (sort (fn [a b] (< (:timestamp a) (:timestamp b))) (vals actions))]
       (reduce
@@ -120,23 +120,72 @@
 
 ;;; World time
 
-(defn monster-actions []
-   (fold-named
-      (fn [state x y val]
-         (if (= :monster (:type val))
-            (set-action-proposal! val (make-action val "move" (rand-nth ["north" "south" "east" "west"])))
-            state))
-      nil (board)))
+(defn unvisited-neighbours [map board poss]
+   (set
+      (reduce
+         (fn [out [x y]]
+            (reduce 
+               (fn [out [x y]]
+                  (cond
+                     (get-board map x y false)
+                        out
+                     (can-move? board x y)
+                        (cons [x y] out)
+                     :else
+                        out))
+               out 
+               [[(+ x 1) y] [(- x 1) y] [x (+ y 1)] [x (- y 1)]]))
+         [] poss)))
+
+(defn monster-map []
+   (let [board (board)
+         roots 
+            (fold-named 
+               (fn [roots x y val] (if (= (:type val) :player) (cons [x y] roots) roots))
+               [] board)]
+      (loop [poss roots distance 0 map {}]
+         ;(println "unvisited-neighbours " poss)
+         (if (empty? poss)
+            map
+            (let [map (reduce (fn [map [x y]] (put-board map x y distance)) map poss)]
+               (recur
+                  (unvisited-neighbours map board poss)
+                  (+ distance 1)
+                  map))))))
+
+(defn best-direction [mmap x y]
+   (let [opts
+         (map 
+            (fn [[x y dir]] {:dir dir :score (get-board mmap x y 1000)})
+            [[(+ x 1) y "east"]
+             [(- x 1) y "west"]
+             [x (+ y 1) "south"]
+             [x (- y 1) "north"]])]
+       (:dir (first (sort (fn [a b] (< (:score a) (:score b))) opts)))))
+   
+(defn monsters-think []
+   (let [map (monster-map)]
+      (fold-named
+         (fn [state x y val]
+            (if (= :monster (:type val))
+               (if (= (bit-and (turn) 1) 0)
+                  ;; move half of the time
+                  (set-action-proposal! val 
+                     (make-action val "move" (best-direction map x y)))
+                  state)
+               state))
+         nil (board))))
 
 (defn time-ticker []
    (loop []
       ;(println "Turn " (turn) "ends.")
       (alter-world!
          (fn [turn board moves]
-            [(+ turn 1)
+            [(+ turn 1) 
                (step-world board moves)
                {}]))
-      (monster-actions)
+      ;; todo, substract this from sleep
+      (monsters-think)
       (Thread/sleep turn-duration)
       (recur)))
 
@@ -160,7 +209,7 @@
 (defn make-monster [name]
    {:type :monster
     :name name})
-
+ 
 (defn parse-board [string]
    (loop [board {} x 0 y 0 data (seq string)]
       (cond
@@ -210,8 +259,8 @@
             [turn board actions]
             (let [pos (empty-pos board)]
               (if pos
-                  [turn
-                     (put-board board (nth pos 0) (nth pos 1)
+                  [turn 
+                     (put-board board (nth pos 0) (nth pos 1) 
                         (cons thing
                            (get-board board (nth pos 0) (nth pos 1) [])))
                      actions]
@@ -224,7 +273,8 @@
 (defn maybe-add-monster! []
    (let [name (uuid)]
       (maybe-add-thing! name
-         (make-monster name))))
+         (make-monster name)))
+   true)
 
 (defn reset-game! []
    (alter-world!
@@ -243,7 +293,7 @@
                            ########################.###########.#
                            #....................................#
                            #...........................##########
-                           #...........................#
+                           #...........................#  
                            #...........................###
                            #.............................#
                            #.............................#
@@ -251,6 +301,8 @@
                            ###############################")
             {}])))
 
+
+   
 (defn unparse-board [board player]
    (loop [x 0 y 0 out []]
       (let [val (get-board board x y false)]
@@ -287,13 +339,9 @@
                         :description "keinot taisteluun"}}}}
 
       (undocumented
-        (route/resources "/")
-        (GET "/" []
-          (resp/temporary-redirect "/index.html")))
-
-      (GET "/pic/:type" []
-         :summary "get player pic"
-         (ok "foo"))
+         (route/resources "/")
+         (GET "/" []
+            (resp/temporary-redirect "/index.html")))
 
       (context "/api" []
 
