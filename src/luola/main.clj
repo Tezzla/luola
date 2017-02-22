@@ -21,8 +21,6 @@
       (fn [[turn board moves]]
          (op turn board moves))))
 
-(defonce action-proposals (atom {}))
-
 (def move-duration 20000) ;; in ms
 
 
@@ -41,10 +39,10 @@
    :target target})
 
 (defn set-action-proposal! [actor action]
-   (alter-world! 
+   (alter-world!
       (fn [turn board moves]
          [turn board
-            (assoc moves (:name actor) 
+            (assoc moves (:name actor)
                {:action action
                 :timestamp (timestamp)})])))
 
@@ -54,7 +52,7 @@
 (defn time-ticker []
    (loop []
       (println "Turn " (turn) "ends.")
-      (alter-world! 
+      (alter-world!
          (fn [turn board moves]
             [(+ turn 1) board {}]))
       (Thread/sleep move-duration)
@@ -68,9 +66,9 @@
 
 ;; game world = [turn board actions]?
 ;
-; ticker runs step-game! 
+; ticker runs step-game!
 ;   [0 <board> {...}) → [1 <board'> {}]
-; 
+;
 
 
 ;;; Game state
@@ -83,7 +81,7 @@
 (defn get-board [board x y def]
    (get (get board y {}) x def))
 
-(def empty-cell 
+(def empty-cell
    {:type :ground
     :value :empty})
 
@@ -91,12 +89,12 @@
    {:type :thing
     :value :wall})
 
-;; todo: add ip 
+;; todo: add ip
 (defn make-player [name pass]
    {:type :player
     :name name
     :pass pass})
- 
+
 (defn parse-board [string]
    (loop [board {} x 0 y 0 data (seq string)]
       (cond
@@ -168,7 +166,7 @@
 (defn reset-game! []
    (alter-world!
       (fn [_ _ _]
-         [1 
+         [1
             (parse-board  "###############################
                            #...............#.............#
                            #...............#.............#
