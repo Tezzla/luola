@@ -1,5 +1,6 @@
 (ns luola.main
   (:require [compojure.api.sweet :refer :all]
+            [compojure.route :as route]
             [ring.util.http-response :refer [ok status content-type] :as resp]
             [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
             [ring.adapter.jetty :as jetty]
@@ -50,16 +51,16 @@
        (= (:type thingie) :player)))
 
 (defn fold-named [op state board]
-   (reduce 
+   (reduce
       (fn [state [y xs]]
-         (reduce 
+         (reduce
             (fn [state [x vals]]
                (if (:name (first vals))
                   (op state x y (first vals))
                   state))
             state xs))
       nil board))
-    
+
 ;; board name -> {:x x :y y :player player-map}
 (defn find-player [board name]
    (fold-named
@@ -92,7 +93,7 @@
       :else [x y]))
 
 (defn maybe-move [board info dir]
-   (let [x (:x info) y (:y info) 
+   (let [x (:x info) y (:y info)
          old (get-board board x y [])
          [xp yp] (step x y dir)]
       (if (can-move? board xp yp)
@@ -101,7 +102,7 @@
                (put-board x y (rest old))
                (put-board xp yp (cons (first old) new))))
          board)))
-      
+
 (defn step-world [board actions]
    (let [actions (sort (fn [a b] (< (:timestamp a) (:timestamp b))) (vals actions))]
       (reduce
@@ -132,7 +133,7 @@
       ;(println "Turn " (turn) "ends.")
       (alter-world!
          (fn [turn board moves]
-            [(+ turn 1) 
+            [(+ turn 1)
                (step-world board moves)
                {}]))
       (monster-actions)
@@ -159,7 +160,7 @@
 (defn make-monster [name]
    {:type :monster
     :name name})
- 
+
 (defn parse-board [string]
    (loop [board {} x 0 y 0 data (seq string)]
       (cond
@@ -209,8 +210,8 @@
             [turn board actions]
             (let [pos (empty-pos board)]
               (if pos
-                  [turn 
-                     (put-board board (nth pos 0) (nth pos 1) 
+                  [turn
+                     (put-board board (nth pos 0) (nth pos 1)
                         (cons thing
                            (get-board board (nth pos 0) (nth pos 1) [])))
                      actions]
@@ -242,7 +243,7 @@
                            ########################.###########.#
                            #....................................#
                            #...........................##########
-                           #...........................#  
+                           #...........................#
                            #...........................###
                            #.............................#
                            #.............................#
@@ -286,6 +287,7 @@
                         :description "keinot taisteluun"}}}}
 
       (undocumented
+        (route/resources "/")
         (GET "/" []
           (resp/temporary-redirect "/index.html")))
 

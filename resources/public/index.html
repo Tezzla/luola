@@ -1,0 +1,38 @@
+<html>
+  <head>
+    <title>Taistelu-urhojen luola: Hurmeen taikatanner</title>
+    <style>
+      body {
+        background-color: black;
+        color: lime;
+      }
+      div#luolavisio {
+        white-space: pre;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Taistelu-urhojen luola!</h1>
+    <div id="luolavisio"></div>
+    <script type="text/javascript">
+      function fetchGameStateLoop(url, elementId, timeout) {
+        var recur = function() {
+          setTimeout(recur, timeout);
+          var req = new XMLHttpRequest();
+          req.open("GET", url, true);
+          req.onreadystatechange = function () {
+            console.log(req);
+            if (req.readyState === XMLHttpRequest.DONE && req.status === 200) {
+              document.getElementById(elementId).innerHTML = req.responseText;
+            }
+          };
+          req.send();
+        };
+        recur();
+      }
+
+      fetchGameStateLoop("api/board?name=", "luolavisio", 1000);
+    </script>
+  </body>
+</html>
