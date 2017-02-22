@@ -10,7 +10,16 @@
    (:import java.util.UUID)
    (:gen-class))
 
-(defonce board (atom {}))
+(defonce world
+   (atom [1 {} {}]))
+
+(defn turn [] (nth @world 0))
+(defn board [] (nth @world 1))
+
+(defn alter-world! [op]
+   (swap! world
+      (fn [[turn board moves]]
+         (op turn board moves))))
 
 (defonce action-proposals (atom {}))
 
@@ -32,19 +41,24 @@
    :target target})
 
 (defn set-action-proposal! [actor action]
-  (swap! action-proposals
-         assoc (:name actor)
-         {:action action
-          :timestamp (timestamp)}))
+   (alter-world! 
+      (fn [turn board moves]
+         [turn board
+            (assoc moves (:name actor) 
+               {:action action
+                :timestamp (timestamp)})])))
 
 
 ;;; World time
 
 (defn time-ticker []
-   (loop [move 0]
-      (println "The move is " move)
+   (loop []
+      (println "Turn " (turn) "ends.")
+      (alter-world! 
+         (fn [turn board moves]
+            [(+ turn 1) board {}]))
       (Thread/sleep move-duration)
-      (recur (+ move 1))))
+      (recur)))
 
 (defonce game-time
    (let [thread (Thread. time-ticker)]
@@ -152,26 +166,29 @@
               board))))))
 
 (defn reset-game! []
-   (reset! board
-      (parse-board  "###############################
-                     #...............#.............#
-                     #...............#.............#
-                     #.............................#
-                     #...............#.............#
-                     #...............#.............#
-                     #...............########.######
-                     #...............#.............#
-                     #...............#.............#
-                     #...............#.............#
-                     ########################.######
-                     #.............................#
-                     #.............................#
-                     #.............................#
-                     #.............................#
-                     #.............................#
-                     #.............................#
-                     #.............................#
-                     ###############################")))
+   (alter-world!
+      (fn [_ _ _]
+         [1 
+            (parse-board  "###############################
+                           #...............#.............#
+                           #...............#.............#
+                           #.............................#
+                           #...............#.............#
+                           #...............#.............#
+                           #...............########.######
+                           #...............#.............#
+                           #...............#.............#
+                           #...............#.............#
+                           ########################.######
+                           #.............................#
+                           #.............................#
+                           #.............................#
+                           #.............................#
+                           #.............................#
+                           #.............................#
+                           #.............................#
+                           ###############################")
+            {}])))
 
 (defn unparse-board [board player]
    (loop [x 0 y 0 out []]
@@ -223,29 +240,29 @@
          (GET "/reset" []
             :summary "reset game"
             (do (reset-game!)
-                (ok (unparse-board @board nil))))
+                (ok (unparse-board (board) nil))))
 
          (GET "/board" []
             :query-params [name :- s/Str]
-            (ok (unparse-board @board name)))
+            (ok (unparse-board (board) name)))
 
          (GET "/add-player" []
             :query-params [name :- s/Str, pass :- s/Str]
             (let [new-board (add-player! name pass)]
-              (if-let [player (find-authorized-player @board name pass)]
-                (ok (unparse-board @board (:name player)))
+              (if-let [player (find-authorized-player (board) name pass)]
+                (ok (unparse-board (board) (:name player)))
                 (status (ok "unacceptable") 403))))
 
          (GET "/player" []
            :query-params [name :- s/Str, pass :- s/Str]
-           (let [player (find-authorized-player @board name pass)]
+           (let [player (find-authorized-player (board) name pass)]
              (if player
                (ok player)
                (status-no-player))))
 
          (GET "/act" []
            :query-params [name :- s/Str, pass :- s/Str, action :- PlayerAction, {target :- ActionTarget nil}]
-           (let [player (find-authorized-player @board name pass)]
+           (let [player (find-authorized-player (board) name pass)]
              (if player
                (do (set-action-proposal! player (make-action action target))
                    (ok))
@@ -284,6 +301,7 @@
          (println "Stopping luola")
          (stop-server)))
    (require 'luola.main :reload)
+   (reset-game!)
    (start-server
       {:port 8080}))
 
