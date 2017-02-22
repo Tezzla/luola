@@ -21,7 +21,7 @@
       (fn [[turn board moves]]
          (op turn board moves))))
 
-(def turn-duration 1000) ;; in ms
+(def turn-duration 200) ;; in ms
 
 
 (defn uuid []

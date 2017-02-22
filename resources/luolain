@@ -1,0 +1,26 @@
+#!/bin/bash
+
+PLAYER=$1
+
+clear
+stty raw -echo
+
+curl "localhost:8080/api/add-player?name=$PLAYER&pass=aaa"
+
+while true
+do
+   stty sane
+   curl -s "localhost:8080/api/board?name=$PLAYER" > /tmp/luola.$PLAYER
+   clear; cat /tmp/luola.$PLAYER
+   stty raw -echo
+   read -n 1 -t 0.3 KEY|| continue
+   case $KEY in 
+      j) curl "localhost:8080/api/act?name=$PLAYER&pass=aaa&action=move&target=south" ;;
+      k) curl "localhost:8080/api/act?name=$PLAYER&pass=aaa&action=move&target=north" ;;
+      h) curl "localhost:8080/api/act?name=$PLAYER&pass=aaa&action=move&target=west" ;;
+      l) curl "localhost:8080/api/act?name=$PLAYER&pass=aaa&action=move&target=east" ;;
+      q) break;
+   esac
+done
+
+stty sane
