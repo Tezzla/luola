@@ -22,7 +22,7 @@
       (fn [[turn board moves]]
          (op turn board moves))))
 
-(def turn-duration 1000) ;; in ms
+(def turn-duration 500) ;; in ms
 
 
 (defn uuid []
@@ -84,6 +84,11 @@
 (defn can-move? [board x y]
    (= (get-board board x y false) [empty-cell]))
 
+(defn enemy-can-move? [board x y]
+   (let [val (get-board board x y [])]
+      (or (= (first val) empty-cell)
+          (= (:type (first val)) :monster))))
+
 (defn step [x y dir]
    (cond
       (= dir "north") [x (- y 1)]
@@ -129,7 +134,7 @@
                   (cond
                      (get-board map x y false)
                         out
-                     (can-move? board x y)
+                     (enemy-can-move? board x y)
                         (cons [x y] out)
                      :else
                         out))
