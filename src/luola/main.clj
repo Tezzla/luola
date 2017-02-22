@@ -21,7 +21,7 @@
       (fn [[turn board moves]]
          (op turn board moves))))
 
-(def move-duration 20000) ;; in ms
+(def turn-duration 200000) ;; in ms
 
 
 (defn uuid []
@@ -55,20 +55,13 @@
       (alter-world!
          (fn [turn board moves]
             [(+ turn 1) board {}]))
-      (Thread/sleep move-duration)
+      (Thread/sleep turn-duration)
       (recur)))
 
 (defonce game-time
    (let [thread (Thread. time-ticker)]
       (.start thread)
       thread))
-
-
-;; game world = [turn board actions]?
-;
-; ticker runs step-game!
-;   [0 <board> {...}) → [1 <board'> {}]
-;
 
 
 ;;; Game state
@@ -153,15 +146,18 @@
     (when (= (:pass player) pass)
       player)))
 
-(defn add-player! [name pass]
-   (swap! board
-      (fn [board]
-        (if (find-player board name)
-          board
-          (let [pos (empty-pos board)]
-            (if pos
-              (put-board board (nth pos 0) (nth pos 1) (make-player name pass))
-              board))))))
+(defn maybe-add-player! [name pass]
+   (alter-world!
+      (fn [turn board actions]
+         (if (find-player board name)
+            [turn board actions]
+            (let [pos (empty-pos board)]
+              (if pos
+                  [turn 
+                     (put-board board (nth pos 0) (nth pos 1) 
+                        (make-player name pass))
+                     actions]
+                  [turn board actions]))))))
 
 (defn reset-game! []
    (alter-world!
@@ -246,10 +242,11 @@
 
          (GET "/add-player" []
             :query-params [name :- s/Str, pass :- s/Str]
-            (let [new-board (add-player! name pass)]
-              (if-let [player (find-authorized-player (board) name pass)]
-                (ok (unparse-board (board) (:name player)))
-                (status (ok "unacceptable") 403))))
+            (do
+               (maybe-add-player! name pass)
+               (if-let [player (find-authorized-player (board) name pass)]
+                 (ok (unparse-board (board) (:name player)))
+                 (status (ok "unacceptable") 403))))
 
          (GET "/player" []
            :query-params [name :- s/Str, pass :- s/Str]
