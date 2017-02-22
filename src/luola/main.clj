@@ -21,7 +21,7 @@
       (fn [[turn board moves]]
          (op turn board moves))))
 
-(def turn-duration 200000) ;; in ms
+(def turn-duration 1000) ;; in ms
 
 
 (defn uuid []
@@ -34,27 +34,97 @@
 
 (def ActionTarget (s/enum "north" "east" "south" "west"))
 
-(defn make-action [action-type target]
+(defn make-action [player action-type target]
   {:type action-type
-   :target target})
+   :target target
+   :name (:name player)
+   :timestamp (timestamp)})
 
 (defn set-action-proposal! [actor action]
    (alter-world!
       (fn [turn board moves]
-         [turn board
-            (assoc moves (:name actor)
-               {:action action
-                :timestamp (timestamp)})])))
+         [turn board (assoc moves (:name actor) action)])))
 
+(defn player? [thingie]
+  (and (map? thingie)
+       (= (:type thingie) :player)))
+
+;; board name -> {:x x :y y :player player-map}
+(defn find-player [board name]
+  (reduce (fn [state [y xs]]
+            (reduce (fn [state [x vals]]
+               (reduce (fn [state val]
+                      (or state
+                          (if (and (player? val)
+                                   (= (:name val) name))
+                            {:x x :y y :player val})))
+                      state vals))
+                    state
+                    xs))
+          nil
+          board))
+
+(defn get-board [board x y def]
+   (get (get board y {}) x def))
+
+(defn put-board [board x y val]
+   (assoc board y
+      (assoc (get board y {}) x val)))
+
+(def empty-cell
+   {:type :ground
+    :value :empty})
+
+(defn can-move? [board x y]
+   (= (get-board board x y false) [empty-cell]))
+
+(defn step [x y dir]
+   (cond
+      (= dir "north") [x (- y 1)]
+      (= dir "south") [x (+ y 1)]
+      (= dir "west") [(- x 1) y]
+      (= dir "east") [(+ x 1) y]
+      :else [x y]))
+
+(defn maybe-move [board info dir]
+   (println "maybe-move of " info " to " dir)
+   (let [x (:x info) y (:y info) 
+         old (get-board board x y [])
+         [xp yp] (step x y dir)]
+      (if (can-move? board xp yp)
+         (println " - can move from " x "." y " -> " xp "." yp)
+         (println " - cannot move to " xp ", " yp))
+      (if (can-move? board xp yp)
+         (let [new (get-board board xp yp [])]
+            (-> board
+               (put-board x y (rest old))
+               (put-board xp yp (cons (first old) new))))
+         board)))
+      
+(defn step-world [board actions]
+   (let [actions (sort (fn [a b] (< (:timestamp a) (:timestamp b))) (vals actions))]
+      (reduce
+         (fn [board action]
+            (let [info (find-player board (:name action))]
+               (cond
+                  (= (:type action) "move")
+                     (maybe-move board info (:target action))
+                  :else
+                     (do
+                        (println "Unknown action: " action)
+                        board))))
+         board actions)))
 
 ;;; World time
 
 (defn time-ticker []
    (loop []
-      (println "Turn " (turn) "ends.")
+      ;(println "Turn " (turn) "ends.")
       (alter-world!
          (fn [turn board moves]
-            [(+ turn 1) board {}]))
+            [(+ turn 1) 
+               (step-world board moves)
+               {}]))
       (Thread/sleep turn-duration)
       (recur)))
 
@@ -65,18 +135,6 @@
 
 
 ;;; Game state
-
-;; set value to just [val]
-(defn put-board [board x y val]
-   (assoc board y
-      (assoc (get board y {}) x [val])))
-
-(defn get-board [board x y def]
-   (get (get board y {}) x def))
-
-(def empty-cell
-   {:type :ground
-    :value :empty})
 
 (def wall-cell
    {:type :thing
@@ -97,12 +155,12 @@
             (recur board 0 (+ y 1) (rest data))
          (= (first data) \.)
             (recur
-               (put-board board x y empty-cell)
+               (put-board board x y [empty-cell])
                (+ x 1) y (rest data))
          (= (first data) \space)
             (recur board x y (rest data))
          (= (first data) \#)
-            (recur (put-board board x y wall-cell) (+ x 1) y (rest data))
+            (recur (put-board board x y [wall-cell]) (+ x 1) y (rest data))
          :else
             (do
                (println "BAD CHAR:" (first data))
@@ -123,28 +181,12 @@
       (keys board)))
 
 
-(defn player? [thingie]
-  (and (map? thingie)
-       (= (:type thingie) :player)))
 
-(defn find-player [board name]
-  (reduce (fn [state [y xs]]
-            (reduce (fn [state [x vals]]
-               (reduce (fn [state val]
-                      (or state
-                          (if (and (player? val)
-                                   (= (:name val) name))
-                            val)))
-                      state vals))
-                    state
-                    xs))
-          nil
-          board))
-
+;; board name pass → nil | player-map
 (defn find-authorized-player [board name pass]
-  (let [player (find-player board name)]
-    (when (= (:pass player) pass)
-      player)))
+   (let [info (find-player board name)]
+      (when (= (:pass (:player info)) pass)
+         (:player info))))
 
 (defn maybe-add-player! [name pass]
    (alter-world!
@@ -155,7 +197,8 @@
               (if pos
                   [turn 
                      (put-board board (nth pos 0) (nth pos 1) 
-                        (make-player name pass))
+                        (cons (make-player name pass) 
+                           (get-board board (nth pos 0) (nth pos 1) [])))
                      actions]
                   [turn board actions]))))))
 
@@ -259,7 +302,7 @@
            :query-params [name :- s/Str, pass :- s/Str, action :- PlayerAction, {target :- ActionTarget nil}]
            (let [player (find-authorized-player (board) name pass)]
              (if player
-               (do (set-action-proposal! player (make-action action target))
+               (do (set-action-proposal! player (make-action player action target))
                    (ok))
                (status-no-player)))))))
 
