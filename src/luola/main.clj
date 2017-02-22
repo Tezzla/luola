@@ -49,20 +49,25 @@
   (and (map? thingie)
        (= (:type thingie) :player)))
 
+(defn fold-named [op state board]
+   (reduce 
+      (fn [state [y xs]]
+         (reduce 
+            (fn [state [x vals]]
+               (if (:name (first vals))
+                  (op state x y (first vals))
+                  state))
+            state xs))
+      nil board))
+    
 ;; board name -> {:x x :y y :player player-map}
 (defn find-player [board name]
-  (reduce (fn [state [y xs]]
-            (reduce (fn [state [x vals]]
-               (reduce (fn [state val]
-                      (or state
-                          (if (and (player? val)
-                                   (= (:name val) name))
-                            {:x x :y y :player val})))
-                      state vals))
-                    state
-                    xs))
-          nil
-          board))
+   (fold-named
+      (fn [state x y val]
+         (if (= (:name val) name)
+            {:x x :y y :player val}
+            state))
+      nil board))
 
 (defn get-board [board x y def]
    (get (get board y {}) x def))
@@ -87,13 +92,9 @@
       :else [x y]))
 
 (defn maybe-move [board info dir]
-   (println "maybe-move of " info " to " dir)
    (let [x (:x info) y (:y info) 
          old (get-board board x y [])
          [xp yp] (step x y dir)]
-      (if (can-move? board xp yp)
-         (println " - can move from " x "." y " -> " xp "." yp)
-         (println " - cannot move to " xp ", " yp))
       (if (can-move? board xp yp)
          (let [new (get-board board xp yp [])]
             (-> board
@@ -105,6 +106,7 @@
    (let [actions (sort (fn [a b] (< (:timestamp a) (:timestamp b))) (vals actions))]
       (reduce
          (fn [board action]
+            ;(println "ACTION " action)
             (let [info (find-player board (:name action))]
                (cond
                   (= (:type action) "move")
@@ -117,6 +119,14 @@
 
 ;;; World time
 
+(defn monster-actions []
+   (fold-named
+      (fn [state x y val]
+         (if (= :monster (:type val))
+            (set-action-proposal! val (make-action val "move" (rand-nth ["north" "south" "east" "west"])))
+            state))
+      nil (board)))
+
 (defn time-ticker []
    (loop []
       ;(println "Turn " (turn) "ends.")
@@ -125,6 +135,7 @@
             [(+ turn 1) 
                (step-world board moves)
                {}]))
+      (monster-actions)
       (Thread/sleep turn-duration)
       (recur)))
 
@@ -140,12 +151,15 @@
    {:type :thing
     :value :wall})
 
-;; todo: add ip
 (defn make-player [name pass]
    {:type :player
     :name name
     :pass pass})
 
+(defn make-monster [name]
+   {:type :monster
+    :name name})
+ 
 (defn parse-board [string]
    (loop [board {} x 0 y 0 data (seq string)]
       (cond
@@ -188,7 +202,7 @@
       (when (= (:pass (:player info)) pass)
          (:player info))))
 
-(defn maybe-add-player! [name pass]
+(defn maybe-add-thing! [name thing]
    (alter-world!
       (fn [turn board actions]
          (if (find-player board name)
@@ -197,30 +211,39 @@
               (if pos
                   [turn 
                      (put-board board (nth pos 0) (nth pos 1) 
-                        (cons (make-player name pass) 
+                        (cons thing
                            (get-board board (nth pos 0) (nth pos 1) [])))
                      actions]
                   [turn board actions]))))))
+
+(defn maybe-add-player! [name pass]
+   (maybe-add-thing! name
+      (make-player name pass)))
+
+(defn maybe-add-monster! []
+   (let [name (uuid)]
+      (maybe-add-thing! name
+         (make-monster name))))
 
 (defn reset-game! []
    (alter-world!
       (fn [_ _ _]
          [1
-            (parse-board  "###############################
-                           #...............#.............#
-                           #...............#.............#
-                           #.............................#
-                           #...............#.............#
-                           #...............#.............#
-                           #...............########.######
-                           #...............#.............#
-                           #...............#.............#
-                           #...............#.............#
-                           ########################.######
-                           #.............................#
-                           #.............................#
-                           #.............................#
-                           #.............................#
+            (parse-board  "#################################
+                           #...............#...............#
+                           #...............#.............#.#
+                           #.............................#.#
+                           #...............#.............#.######
+                           #...............#.............#......#
+                           #...............########.###########.#
+                           #...............#..................#.#
+                           #...............#..................#.#
+                           #...............#..................#.#
+                           ########################.###########.#
+                           #....................................#
+                           #...........................##########
+                           #...........................#  
+                           #...........................###
                            #.............................#
                            #.............................#
                            #.............................#
@@ -243,6 +266,8 @@
                (if (= player (:name (first val)))
                   (recur (+ x 1) y (cons \@ out))
                   (recur (+ x 1) y (cons \P out)))
+            (= :monster (:type (first val)))
+               (recur (+ x 1) y (cons \$ out))
             :else
                (recur (+ x 1) y (cons \? out))))))
 
