@@ -50,6 +50,10 @@
   (and (map? thingie)
        (= (:type thingie) :player)))
 
+(defn monster? [thingie]
+  (and (map? thingie)
+       (= (:type thingie) :monster)))
+
 (defn fold-named [op state board]
    (reduce
       (fn [state [y xs]]
@@ -81,6 +85,9 @@
    {:type :ground
     :value :empty})
 
+(defn empty-cell? [thingie]
+  (= thingie empty-cell))
+
 ; move
 
 (defn can-move? [board x y]
@@ -88,8 +95,8 @@
 
 (defn enemy-can-move? [board x y]
    (let [val (get-board board x y [])]
-      (or (= (first val) empty-cell)
-          (= (:type (first val)) :monster))))
+      (or (empty-cell? (first val))
+          (monster? (first val)))))
 
 (defn step [x y dir]
    (cond
@@ -113,7 +120,7 @@
 
 (defn can-attack? [board x y]
   (let [val (get-board board x y [])]
-    (= (:type (first val)) :player)))
+    (player? (first val))))
 
 (defn maybe-attack [board {:keys [x y]} dir]
   (let [[xp yp] (step x y dir)]
@@ -164,7 +171,7 @@
    (let [board (board)
          roots
             (fold-named
-               (fn [roots x y val] (if (= (:type val) :player) (cons [x y] roots) roots))
+               (fn [roots x y val] (if (player? val) (cons [x y] roots) roots))
                [] board)]
       (loop [poss roots distance 0 map {}]
          ;(println "unvisited-neighbours " poss)
@@ -197,11 +204,11 @@
         the-board (board)]
       (fold-named
          (fn [state x y val]
-            (if (= :monster (:type val))
+            (if (monster? val)
                (if (= (bit-and (turn) 1) 0)
-                 ;; move half of the time
-                 (set-action-proposal! val
-                                       (monster-action val the-board map x y))
+                  ;; move half of the time
+                  (set-action-proposal! val
+                                        (monster-action val the-board map x y))
                   state)
                state))
          nil the-board)))
@@ -230,6 +237,9 @@
 (def wall-cell
    {:type :thing
     :value :wall})
+
+(defn wall-cell? [thingie]
+  (= thingie wall-cell))
 
 (defn make-player [name pass]
    {:type :player
@@ -269,7 +279,7 @@
          (reduce
             (fn [taken x]
                (let [val (get-board board x y false)]
-                  (if (= val [empty-cell])
+                  (if (empty-cell? (first val))
                      [x y]
                      taken)))
             taken (keys (get board y))))
@@ -365,15 +375,15 @@
                (if (= x 0)
                   (apply str (reverse out))
                   (recur 0 (+ y 1) (cons \newline out)))
-            (= val [wall-cell])
+            (wall-cell? (first val))
                (recur (+ x 1) y (cons \# out))
-            (= val [empty-cell])
+            (empty-cell? (first val))
                (recur (+ x 1) y (cons \. out))
-            (= :player (:type (first val)))
+            (player? (first val))
                (if (= player (:name (first val)))
                   (recur (+ x 1) y (cons \@ out))
                   (recur (+ x 1) y (cons \P out)))
-            (= :monster (:type (first val)))
+            (monster? (first val))
                (recur (+ x 1) y (cons \e out))
             :else
                (recur (+ x 1) y (cons \? out))))))
