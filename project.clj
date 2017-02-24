@@ -1,5 +1,5 @@
 (defproject luola "0.0.0-SNAPSHOT"
-   :dependencies 
+   :dependencies
       [[org.clojure/clojure "1.8.0"]
        [prismatic/schema "1.1.3"]
        [prismatic/plumbing "0.5.3"]
@@ -17,22 +17,22 @@
        ]
 
    :source-paths ["src"]
+   :resource-paths ["resources"]
 
-   :profiles 
-      {:dev 
+   :profiles
+      {:dev
          {:dependencies  []
             ; [[ring-mock "0.1.5"]]
           :resource-paths ["target/generated"]}
-       :uberjar 
+       :uberjar
           {:main  luola.main
            :aot   [luola.main]
            :uberjar-name "luola.jar"}}
-           
-   :repl-options 
+
+   :repl-options
       {:init-ns luola.main
        :init (do (println "Repl init") (go))
        :timeout 900000 ; 120s, needed for slow machines
        }
-       
+
    :main luola.main)
-   

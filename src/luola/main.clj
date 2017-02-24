@@ -1,5 +1,6 @@
 (ns luola.main
-  (:require [compojure.api.sweet :refer :all]
+  (:require [clojure.java.io :as io]
+            [compojure.api.sweet :refer :all]
             [compojure.route :as route]
             [ring.util.http-response :refer [ok status content-type] :as resp]
             [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
@@ -360,6 +361,8 @@
     #....................................................................................#
     #....................................................................................#
     ######################################################################################")
+
+(def maze-level (slurp (io/resource "maze.level")))
 
 (defn reset-game! []
    (alter-world!
