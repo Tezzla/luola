@@ -4,11 +4,24 @@
     <style>
       body {
         background-color: black;
+        font-size: small;
         color: lime;
       }
       div#luolavisio {
         white-space: pre;
         font-family: monospace;
+      }
+      .enemy {
+        color: OrangeRed;
+      }
+      .player {
+        color: white;
+      }
+      .empty {
+        color: DimGray;
+      }
+      .wall {
+        color: BurlyWood;
       }
     </style>
   </head>
@@ -16,6 +29,13 @@
     <h1>Taistelu-urhojen luola!</h1>
     <div id="luolavisio"></div>
     <script type="text/javascript">
+      function addEnhancedGraphicsTags(str) {
+        return str.replace(new RegExp(/(e+)/, 'g'), "<span class='enemy'>$1</span>")
+                  .replace(new RegExp(/(P+)/, 'g'), "<span class='player'>$1</span>")
+                  .replace(new RegExp(/(#+)/, 'g'), "<span class='wall'>$1</span>")
+                  .replace(new RegExp(/(\.+)/, 'g'), "<span class='empty'>$1</span>");
+      }
+
       function fetchGameStateLoop(url, elementId, timeout) {
         var recur = function() {
           setTimeout(recur, timeout);
@@ -24,7 +44,7 @@
           req.onreadystatechange = function () {
             console.log(req);
             if (req.readyState === XMLHttpRequest.DONE && req.status === 200) {
-              document.getElementById(elementId).innerHTML = req.responseText;
+              document.getElementById(elementId).innerHTML = addEnhancedGraphicsTags(req.responseText);
             }
           };
           req.send();
