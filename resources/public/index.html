@@ -23,6 +23,9 @@
       .wall {
         color: BurlyWood;
       }
+      .item {
+        color: yellow;
+      }
     </style>
   </head>
   <body>
@@ -33,7 +36,8 @@
         return str.replace(new RegExp(/(e+)/, 'g'), "<span class='enemy'>$1</span>")
                   .replace(new RegExp(/(P+)/, 'g'), "<span class='player'>$1</span>")
                   .replace(new RegExp(/(#+)/, 'g'), "<span class='wall'>$1</span>")
-                  .replace(new RegExp(/(\.+)/, 'g'), "<span class='empty'>$1</span>");
+                  .replace(new RegExp(/(\.+)/, 'g'), "<span class='empty'>$1</span>")
+                  .replace(new RegExp(/(\$+)/, 'g'), "<span class='item'>$1</span>");
       }
 
       function fetchGameStateLoop(url, elementId, timeout) {
@@ -42,7 +46,6 @@
           var req = new XMLHttpRequest();
           req.open("GET", url, true);
           req.onreadystatechange = function () {
-            console.log(req);
             if (req.readyState === XMLHttpRequest.DONE && req.status === 200) {
               document.getElementById(elementId).innerHTML = addEnhancedGraphicsTags(req.responseText);
             }
@@ -52,7 +55,7 @@
         recur();
       }
 
-      fetchGameStateLoop("api/board?name=", "luolavisio", 1000);
+      fetchGameStateLoop("api/board?name=", "luolavisio", 500);
     </script>
   </body>
 </html>
