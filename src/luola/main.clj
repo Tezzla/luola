@@ -421,6 +421,30 @@
             :else
                (recur (+ x 1) y (cons \? out))))))
 
+;;; Leaderboard
+
+(defn players [board]
+  (loop [x 0 y 0 out []]
+    (let [val (get-board board x y false)]
+      (cond
+        (not val)
+          (if (= x 0)
+            out
+            (recur 0 (+ y 1) out))
+        (player? (first val))
+          (recur (+ x 1) y (cons (first val) out))
+        :else
+          (recur (+ x 1) y out)))))
+
+(defn player->leaderboard-entry [player]
+  {:name  (:name player)
+   :value (->> player
+               :items
+               (map :value)
+               (reduce +))})
+
+(defn leaderboard [board]
+  (sort-by :value > (map player->leaderboard-entry (players board))))
 
 ;;; Handler
 
@@ -476,7 +500,9 @@
              (if player
                (do (set-action-proposal! player (make-action player action target))
                    (ok))
-               (status-no-player)))))))
+               (status-no-player))))
+         (GET "/leaderboard" []
+           (ok (leaderboard (board)))))))
 
 
 ;;; Startup and shutdown
