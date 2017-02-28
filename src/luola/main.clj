@@ -5,10 +5,7 @@
             [ring.util.http-response :refer [ok status content-type] :as resp]
             [ring.middleware.defaults :refer [wrap-defaults site-defaults]]
             [ring.adapter.jetty :as jetty]
-            [schema.core :as s]
-            ;[clojure.string :as string]
-            ;[cheshire.core :as json]
-            )
+            [schema.core :as s])
    (:import java.util.UUID)
    (:gen-class))
 
@@ -26,6 +23,11 @@
 
 (defn next-board-state-promise [] @next-board)
 
+(defonce master-password
+   (atom
+      (try (slurp "/tmp/luola-salasana.txt")
+           (catch Exception e "salasana"))))
+
 (defn alter-world! [op]
    (swap! world
       (fn [[turn board moves limbo]]
@@ -40,8 +42,7 @@
           (deliver old-promise new-board)
           new-state))))
 
-(def turn-duration 500) ;; in ms
-
+(defonce turn-duration (atom 500)) ;; in ms
 
 (defn uuid []
   (str (java.util.UUID/randomUUID)))
@@ -231,7 +232,7 @@
    (let [actions (sort (fn [a b] (< (:timestamp a) (:timestamp b))) (vals actions))]
       (reduce
        (fn [[board limbo] action]
-         (println "ACTION " action)
+         ;(println "ACTION " action)
          (let [info (find-named board (:name action))]
            (cond
              (nil? info)
@@ -284,10 +285,13 @@
                   (+ distance 1)
                   map))))))
 
-(defn best-direction [mmap x y]
+(defn jitter []
+   (rand-nth [0 0 0 0 0 0 1 -1 1 -1 1 -1 2 -2 4 -4 8 -8 32 -32]))
+
+(defn bestish-direction [mmap x y]
    (let [opts
          (map
-          (fn [[x y dir]] [(get-board mmap x y 1000) x y dir])
+          (fn [[x y dir]] [(+ (jitter) (get-board mmap x y 1000)) x y dir])
             [[(+ x 1) y "east"]
              [(- x 1) y "west"]
              [x (+ y 1) "south"]
@@ -295,7 +299,7 @@
      (first (sort (fn [a b] (< (first a) (first b))) opts))))
 
 (defn monster-action [monster board player-distance-map x y]
-  (let [[distance x y direction] (best-direction player-distance-map x y)
+  (let [[distance x y direction] (bestish-direction player-distance-map x y)
         cell (get-board board x y [])]
     (cond (player? (first cell)) (make-action monster "attack" direction)
           :else                  (make-action monster "move" direction))))
@@ -326,7 +330,7 @@
               new-limbo])))
       ;; todo, substract this from sleep
       (monsters-think)
-      (Thread/sleep turn-duration)
+      (Thread/sleep @turn-duration)
       (recur)))
 
 (defonce game-time
@@ -582,6 +586,7 @@
    (when server
       (stop-server))
    (stop-server)
+   (println "starting server")
    (reset! server (jetty/run-jetty api-handler conf))
    (when server
      (println "Luola is running")))
@@ -605,8 +610,8 @@
       {:port 8080}))
 
 (defn go []
-   (println "reset from go")
-   (reset))
+   (println "Go!")
+   (start-server {:port 8080}))
 
 (defn -main [& args]
    (start-server {}))
