@@ -56,6 +56,13 @@
 (defn wall-cell? [thingie]
   (= thingie wall-cell))
 
+(def spawn-cell
+  {:type :thing
+   :value :spawning-pool})
+
+(defn spawn-cell? [thingie]
+  (= thingie spawn-cell))
+
 (defn make-player [name pass]
   {:type  :player
    :items []
@@ -82,6 +89,30 @@
 (defn item? [thingie]
   (and (map? thingie)
        (= (:type thingie) :item)))
+
+; Gather board cells
+
+(defn board-cells [board predicate]
+  (loop [x 0 y 0 out []]
+    (let [val (get-board board x y false)]
+      (cond
+        (not val)
+          (if (= x 0)
+            out
+            (recur 0 (+ y 1) out))
+        (predicate val)
+          (recur (+ x 1) y (cons {:x x :y y :cell val} out))
+        :else
+          (recur (+ x 1) y out)))))
+
+(defn player-cells [board]
+  (board-cells board #(player? (first %))))
+
+(defn spawn-cells [board]
+  (board-cells board #(spawn-cell? (first %))))
+
+(defn empty-spawn-cell [board]
+  (rand-nth (spawn-cells board)))
 
 ; Actions
 
@@ -132,11 +163,13 @@
 (defn can-move? [board x y]
   (let [val (get-board board x y [])]
     (or (item? (first val))
+        (spawn-cell? (first val))
         (empty-cell? (first val)))))
 
 (defn enemy-can-move? [board x y]
    (let [val (get-board board x y [])]
      (or (empty-cell? (first val))
+         (spawn-cell? (first val))
          (monster? (first val))
          (item? (first val)))))
 
@@ -306,6 +339,8 @@
             (recur (put-board board x y [(make-monster (uuid)) empty-cell]) (+ x 1) y (rest data))
          (= (first data) \#)
             (recur (put-board board x y [wall-cell]) (+ x 1) y (rest data))
+         (= (first data) \:)
+            (recur (put-board board x y [spawn-cell]) (+ x 1) y (rest data))
          :else
             (do
                (println "BAD CHAR:" (first data))
@@ -333,23 +368,28 @@
       (when (= (:pass (:player info)) pass)
          (:player info))))
 
-(defn maybe-add-thing! [name thing]
+(defn maybe-add-thing!
+  ([name thing]
+   (maybe-add-thing! name thing empty-pos))
+  ([name thing pos-fn]
    (alter-world!
-      (fn [turn board actions]
-         (if (find-named board name)
-            [turn board actions]
-            (let [pos (empty-pos board)]
-              (if pos
-                  [turn
-                     (put-board board (nth pos 0) (nth pos 1)
+    (fn [turn board actions]
+      (if (find-named board name)
+        [turn board actions]
+        (let [[x y :as pos] (pos-fn board)]
+          (if pos
+            [turn
+             (put-board board x y
                         (cons thing
-                           (get-board board (nth pos 0) (nth pos 1) [])))
-                     actions]
-                  [turn board actions]))))))
+                              (get-board board x y [])))
+             actions]
+            [turn board actions])))))))
 
 (defn maybe-add-player! [name pass]
-   (maybe-add-thing! name
-      (make-player name pass)))
+  (maybe-add-thing! name
+                    (make-player name pass)
+                    #(if-let [pos (empty-spawn-cell %)]
+                       [(:x pos) (:y pos)])))
 
 (defn maybe-add-monster! []
    (let [name (uuid)]
@@ -363,19 +403,19 @@
     #eeee.$#...#...#............................#........................................#
     #eeee#$..#...#..............................#........................................#
     #eeee.$#...#................................#........................................#
-    ##.#.#$..#..................................#........................................#
+    ##.#.#$..#.................:................#........................................#
     #$$$$$$#....................................#........................................#
     #.#.#.#..#..................................#..................$$....................#
     #.......#...................................#........................................#
     ##.#.#.#....................................#........................................#
     #...........................................#........................................#
     #.#.#.......................................#........................................#
-    #...........................................#........................................#
-    ##.#.......................$$...............#........................................#
+    #...........................................#.................................:......#
+    ##.#...........:...........$$...............#........................................#
     #..........................$$...............#......................................#.#
     #.#.........................................#......................................#.#
     #...........................................#......................................#.#
-    #...........................................#......................................#.#
+    #...........................................#..........:...........................#.#
     #.......................................#########..................................#.#
     #.......................................#eeeeeee#..................................#.#
     #.......................................#ee...ee#..................................#.#
@@ -388,11 +428,11 @@
     #..................................................................................#.#
     #..................................................................................#.#
     #....................................$...............................................#
-    #.........................................................$..........................#
+    #...............:.........................................$..........................#
     #....................................................................................#
     #....................................................................................#
     #...............................................$....................................#
-    #..........................$.........................................................#
+    #..........................$..........................................:..............#
     #....................................................................................#
     #....................................................................................#
     #...................................................$................................#
@@ -420,6 +460,8 @@
                (recur (+ x 1) y (cons \# out))
             (empty-cell? (first val))
                (recur (+ x 1) y (cons \. out))
+            (spawn-cell? (first val))
+               (recur (+ x 1) y (cons \: out))
             (player? (first val))
                (if (= player (:name (first val)))
                   (recur (+ x 1) y (cons \@ out))
@@ -434,17 +476,7 @@
 ;;; Leaderboard
 
 (defn players [board]
-  (loop [x 0 y 0 out []]
-    (let [val (get-board board x y false)]
-      (cond
-        (not val)
-          (if (= x 0)
-            out
-            (recur 0 (+ y 1) out))
-        (player? (first val))
-          (recur (+ x 1) y (cons (first val) out))
-        :else
-          (recur (+ x 1) y out)))))
+  (map (comp first :cell) (player-cells board)))
 
 (defn player->leaderboard-entry [player]
   {:name  (:name player)
