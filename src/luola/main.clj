@@ -9,6 +9,10 @@
    (:import java.util.UUID)
    (:gen-class))
 
+(defn random-element [collection]
+  (when (first collection)
+    (rand-nth collection)))
+
 (defonce next-board (atom (promise)))
 (defonce world
   (atom [1  ; turn counter
@@ -69,12 +73,23 @@
 (defn wall-cell? [thingie]
   (= thingie wall-cell))
 
-(def spawn-cell
-  {:type :thing
-   :value :spawning-pool})
+(def player-spawn-cell
+  {:type :spawn-cell
+   :value :player-spawn-cell})
+
+(defn player-spawn-cell? [thingie]
+  (= thingie player-spawn-cell))
+
+(def item-spawn-cell
+  {:type :spawn-cell
+   :value :item-spawn-cell})
+
+(defn item-spawn-cell? [thingie]
+  (= thingie item-spawn-cell))
 
 (defn spawn-cell? [thingie]
-  (= thingie spawn-cell))
+  (and (map? thingie)
+       (= (:type thingie) :spawn-cell)))
 
 (defn make-player [name pass]
   {:type  :player
@@ -124,11 +139,17 @@
 (defn player-cells [board]
   (board-cells board #(player? (first %))))
 
-(defn spawn-cells [board]
-  (board-cells board #(spawn-cell? (first %))))
+(defn player-spawn-cells [board]
+  (board-cells board #(player-spawn-cell? (first %))))
 
-(defn empty-spawn-cell [board]
-  (rand-nth (spawn-cells board)))
+(defn empty-player-spawn-cell [board]
+  (random-element (player-spawn-cells board)))
+
+(defn item-spawn-cells [board]
+  (board-cells board #(item-spawn-cell? (first %))))
+
+(defn empty-item-spawn-cell [board]
+  (random-element (item-spawn-cells board)))
 
 ; Actions
 
@@ -171,6 +192,27 @@
    (assoc board y
       (assoc (get board y {}) x val)))
 
+; limbo
+
+(defn ->limbo [thingie turns-in-limbo]
+  (assoc thingie :turns-in-limbo turns-in-limbo))
+
+(defn <-limbo [thingie]
+  (dissoc thingie :turns-in-limbo))
+
+(defn add-to-limbo [limbo thingie turns-in-limbo]
+  (conj limbo (->limbo thingie turns-in-limbo)))
+
+(defn advance-limbo-time [limbo]
+  (map #(update % :turns-in-limbo dec) limbo))
+
+(defn release-from-limbo [limbo]
+  [(filter #(< (:turns-in-limbo %) 0) limbo)
+   (remove #(< (:turns-in-limbo %) 0) limbo)])
+
+(def player-turns-in-limbo 10)
+(defn item-turns-in-limbo []
+  (+ 100 (rand-int 100)))
 ; move
 
 (defn can-move? [board x y]
@@ -194,7 +236,11 @@
       (= dir "east") [(+ x 1) y]
       :else [x y]))
 
-(defn maybe-move [board {:keys [x y]} dir]
+(defn maybe-move
+  "Move entity to given direction, if able. If entity is a player and
+  there is an item in the room, the item is added to both limbo and the
+  player's inventory"
+  [board limbo {:keys [x y]} dir]
   (let [old (get-board board x y [])
         [xp yp] (step x y dir)]
     (if (can-move? board xp yp)
@@ -204,33 +250,20 @@
                                         (item? (first new)))
             new-entity (if player-moving-on-item?
                          (update old-entity :items conj (first new))
-                         old-entity)]
-        (-> board
-            (put-board x y (rest old))
-            (put-board xp yp (cons new-entity
-                                   (if player-moving-on-item?
-                                     (rest new)
-                                     new)))))
-      board)))
+                         old-entity)
+            new-limbo (if player-moving-on-item?
+                        (add-to-limbo limbo (first new) (item-turns-in-limbo))
+                        limbo)]
+        [(-> board
+             (put-board x y (rest old))
+             (put-board xp yp (cons new-entity
+                                    (if player-moving-on-item?
+                                      (rest new)
+                                      new))))
+         new-limbo])
+      [board limbo])))
 
-; limbo
-(defn ->limbo [thingie turns-in-limbo]
-  (assoc thingie :turns-in-limbo turns-in-limbo))
-
-(defn <-limbo [thingie]
-  (dissoc thingie :turns-in-limbo))
-
-(defn add-to-limbo [limbo thingie turns-in-limbo]
-  (conj limbo (->limbo thingie turns-in-limbo)))
-
-(defn advance-limbo-time [limbo]
-  (map #(update % :turns-in-limbo dec) limbo))
-
-(defn release-from-limbo [limbo]
-  [(filter #(< (:turns-in-limbo %) 0) limbo)
-   (remove #(< (:turns-in-limbo %) 0) limbo)])
 ; attack
-(def player-turns-in-limbo 10)
 
 (defn can-attack? [board x y]
   (let [val (get-board board x y [])]
@@ -258,7 +291,7 @@
          (nil? info)
            [board limbo]
          (= (:type action) "move")
-           [(maybe-move board info (:target action)) limbo]
+           (maybe-move board limbo info (:target action))
          (= (:type action) "attack")
            (maybe-attack board limbo info (:target action))
          :else
@@ -273,7 +306,12 @@
   (let [[release-candidates new-limbo] (release-from-limbo (advance-limbo-time limbo))]
     ; ... only for them to be thrown back to limbo if there's no room in the mortal world
     (reduce (fn [[board limbo] candidate]
-              (if-let [{:keys [x y]} (empty-spawn-cell board)]
+              (if-let [{:keys [x y]} (cond (player? candidate)
+                                             (empty-player-spawn-cell board)
+                                           (item? candidate)
+                                             (empty-item-spawn-cell board)
+                                           :else
+                                             (println "inalid entity in limbo: " candidate))]
                  [(put-board board x y
                              (cons (<-limbo candidate)
                                    (get-board board x y [])))
@@ -405,13 +443,13 @@
          (= (first data) \space)
             (recur board x y (rest data))
          (= (first data) \$)
-            (recur (put-board board x y [(make-item (uuid) 10) empty-cell]) (+ x 1) y (rest data))
+            (recur (put-board board x y [(make-item (uuid) 10) item-spawn-cell]) (+ x 1) y (rest data))
          (= (first data) \e)
             (recur (put-board board x y [(make-monster (uuid)) empty-cell]) (+ x 1) y (rest data))
          (= (first data) \#)
             (recur (put-board board x y [wall-cell]) (+ x 1) y (rest data))
          (= (first data) \:)
-            (recur (put-board board x y [spawn-cell]) (+ x 1) y (rest data))
+            (recur (put-board board x y [player-spawn-cell]) (+ x 1) y (rest data))
          :else
             (do
                (println "BAD CHAR:" (first data))
@@ -459,7 +497,7 @@
 (defn maybe-add-player! [name pass]
   (maybe-add-thing! name
                     (make-player name pass)
-                    #(if-let [pos (empty-spawn-cell %)]
+                    #(if-let [pos (empty-player-spawn-cell %)]
                        [(:x pos) (:y pos)])
                     (fn [board limbo name]
                       (or ((->> limbo (map :name) (set)) name)
@@ -542,7 +580,9 @@
                (recur (+ x 1) y (cons \# out))
             (empty-cell? (first val))
                (recur (+ x 1) y (cons \. out))
-            (spawn-cell? (first val))
+            (item-spawn-cell? (first val))
+               (recur (+ x 1) y (cons \. out))
+            (player-spawn-cell? (first val))
                (recur (+ x 1) y (cons \: out))
             (player? (first val))
                (if (= player (:name (first val)))
