@@ -40,14 +40,16 @@
                   .replace(new RegExp(/(\$+)/, 'g'), "<span class='item'>$1</span>");
       }
 
-      function fetchGameStateLoop(url, elementId, timeout) {
+      function fetchGameStateLoop(url, elementId) {
         var recur = function() {
-          setTimeout(recur, timeout);
           var req = new XMLHttpRequest();
           req.open("GET", url, true);
           req.onreadystatechange = function () {
-            if (req.readyState === XMLHttpRequest.DONE && req.status === 200) {
-              document.getElementById(elementId).innerHTML = addEnhancedGraphicsTags(req.responseText);
+            if (req.readyState === XMLHttpRequest.DONE) {
+              setTimeout(recur, 0);
+              if (req.status === 200) {
+                document.getElementById(elementId).innerHTML = addEnhancedGraphicsTags(req.responseText);
+              }
             }
           };
           req.send();
@@ -55,7 +57,7 @@
         recur();
       }
 
-      fetchGameStateLoop("api/board?name=", "luolavisio", 500);
+      fetchGameStateLoop("api/next-board?name=", "luolavisio");
     </script>
   </body>
 </html>

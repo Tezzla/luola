@@ -12,24 +12,27 @@
    (:import java.util.UUID)
    (:gen-class))
 
+(defonce next-board (atom (promise)))
 (defonce world
-   (atom [1 {} {} (promise)]))
+   (atom [1 {} {}]))
 
 (defn turn [] (nth @world 0))
 (defn board [] (nth @world 1))
-(defn next-board-state-promise [] (nth @world  3))
+(defn next-board-state-promise [] @next-board)
 
 (defn alter-world! [op]
    (swap! world
-      (fn [[turn board moves next-state-promise]]
-        (conj (op turn board moves) next-state-promise))))
+      (fn [[turn board moves]]
+        (op turn board moves))))
 
 (defn alter-world-and-deliver! [op]
    (swap! world
-      (fn [[turn board moves next-state-promise]]
-        (let [[_ new-board _ :as new-state] (op turn board moves)]
-          (deliver next-state-promise new-board)
-          (conj new-state (promise))))))
+      (fn [[turn board moves]]
+        (let [[_ new-board _ :as new-state] (op turn board moves)
+              old-promise (next-board-state-promise)]
+          (reset! next-board (promise))
+          (deliver old-promise new-board)
+          new-state))))
 
 (def turn-duration 500) ;; in ms
 
@@ -92,6 +95,9 @@
 
 ; Gather board cells
 
+(defn get-board [board x y def]
+  (get (get board y {}) x def))
+
 (defn board-cells [board predicate]
   (loop [x 0 y 0 out []]
     (let [val (get-board board x y false)]
@@ -150,9 +156,6 @@
             {:x x :y y :player val}
             state))
       nil board))
-
-(defn get-board [board x y def]
-   (get (get board y {}) x def))
 
 (defn put-board [board x y val]
    (assoc board y
