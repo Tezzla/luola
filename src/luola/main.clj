@@ -14,21 +14,27 @@
 
 (defonce next-board (atom (promise)))
 (defonce world
-   (atom [1 {} {}]))
+  (atom [1  ; turn counter
+         {} ; board
+         {} ; moves
+         [] ; limbo for dead players
+         ]))
 
 (defn turn [] (nth @world 0))
 (defn board [] (nth @world 1))
+(defn limbo [] (nth @world 3))
+
 (defn next-board-state-promise [] @next-board)
 
 (defn alter-world! [op]
    (swap! world
-      (fn [[turn board moves]]
-        (op turn board moves))))
+      (fn [[turn board moves limbo]]
+        (conj (op turn board moves) limbo))))
 
 (defn alter-world-and-deliver! [op]
    (swap! world
-      (fn [[turn board moves]]
-        (let [[_ new-board _ :as new-state] (op turn board moves)
+      (fn [[turn board moves limbo]]
+        (let [[_ new-board _ _ :as new-state] (op turn board moves limbo)
               old-promise (next-board-state-promise)]
           (reset! next-board (promise))
           (deliver old-promise new-board)
@@ -209,31 +215,37 @@
   (let [val (get-board board x y [])]
     (player? (first val))))
 
-(defn maybe-attack [board {:keys [x y]} dir]
+(defn maybe-kill-target [board limbo x y]
+  (if-let [[target & rest-of-cell] (get-board board x y [])]
+    [(put-board board x y rest-of-cell)
+     (conj limbo target)]
+    [board limbo]))
+
+(defn maybe-attack [board limbo {:keys [x y]} dir]
   (let [[xp yp] (step x y dir)]
     (if (can-attack? board xp yp)
-      (let [new (get-board board xp yp [])]
-        (put-board board xp yp (rest new)))
-      board)))
+      (maybe-kill-target board limbo xp yp)
+      [board limbo])))
 
-(defn step-world [board actions]
+(defn step-world [board actions limbo]
    (let [actions (sort (fn [a b] (< (:timestamp a) (:timestamp b))) (vals actions))]
       (reduce
-         (fn [board action]
-            (println "ACTION " action)
-            (let [info (find-named board (:name action))]
-               (cond
-                  (nil? info)
-                    board
-                  (= (:type action) "move")
-                    (maybe-move board info (:target action))
-                  (= (:type action) "attack")
-                    (maybe-attack board info (:target action))
-                  :else
-                     (do
-                        (println "Unknown action: " action)
-                        board))))
-         board actions)))
+       (fn [[board limbo] action]
+         (println "ACTION " action)
+         (let [info (find-named board (:name action))]
+           (cond
+             (nil? info)
+               [board limbo]
+             (= (:type action) "move")
+               [(maybe-move board info (:target action)) limbo]
+             (= (:type action) "attack")
+               (maybe-attack board limbo info (:target action))
+             :else
+               (do
+                 (println "Unknown action: " action)
+                 [board limbo]))))
+       [board limbo]
+       actions)))
 
 ;;; World time
 
@@ -306,10 +318,12 @@
    (loop []
       ;(println "Turn " (turn) "ends.")
       (alter-world-and-deliver!
-         (fn [turn board moves]
-            [(+ turn 1)
-             (step-world board moves)
-             {}]))
+         (fn [turn board moves limbo]
+           (let [[new-board new-limbo] (step-world board moves limbo)]
+             [(+ turn 1)
+              new-board
+              {}
+              new-limbo])))
       ;; todo, substract this from sleep
       (monsters-think)
       (Thread/sleep turn-duration)
