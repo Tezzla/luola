@@ -46,9 +46,11 @@
           req.open("GET", url, true);
           req.onreadystatechange = function () {
             if (req.readyState === XMLHttpRequest.DONE) {
-              setTimeout(recur, 0);
               if (req.status === 200) {
+                setTimeout(recur, 0);
                 document.getElementById(elementId).innerHTML = addEnhancedGraphicsTags(req.responseText);
+              } else {
+                setTimeout(recur, 500);
               }
             }
           };

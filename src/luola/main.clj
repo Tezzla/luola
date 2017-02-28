@@ -51,7 +51,7 @@
   (str (java.util.UUID/randomUUID)))
 
 (defn timestamp []
-   (.getTime (java.util.Date.)))
+   (System/currentTimeMillis))
 
 ; Game objects
 
@@ -213,7 +213,24 @@
                                      new)))))
       board)))
 
+; limbo
+(defn ->limbo [thingie turns-in-limbo]
+  (assoc thingie :turns-in-limbo turns-in-limbo))
+
+(defn <-limbo [thingie]
+  (dissoc thingie :turns-in-limbo))
+
+(defn add-to-limbo [limbo thingie turns-in-limbo]
+  (conj limbo (->limbo thingie turns-in-limbo)))
+
+(defn advance-limbo-time [limbo]
+  (map #(update % :turns-in-limbo dec) limbo))
+
+(defn release-from-limbo [limbo]
+  [(filter #(< (:turns-in-limbo %) 0) limbo)
+   (remove #(< (:turns-in-limbo %) 0) limbo)])
 ; attack
+(def player-turns-in-limbo 10)
 
 (defn can-attack? [board x y]
   (let [val (get-board board x y [])]
@@ -222,34 +239,54 @@
 (defn maybe-kill-target [board limbo x y]
   (if-let [[target & rest-of-cell] (get-board board x y [])]
     [(put-board board x y rest-of-cell)
-     (conj limbo target)]
+     (add-to-limbo limbo target player-turns-in-limbo)]
     [board limbo]))
 
+; board limbo target dir -> [board limbo]
 (defn maybe-attack [board limbo {:keys [x y]} dir]
   (let [[xp yp] (step x y dir)]
     (if (can-attack? board xp yp)
       (maybe-kill-target board limbo xp yp)
       [board limbo])))
 
+(defn resolve-actions [board actions limbo]
+  (reduce
+   (fn [[board limbo] action]
+     ;(println "ACTION " action)
+     (let [info (find-named board (:name action))]
+       (cond
+         (nil? info)
+           [board limbo]
+         (= (:type action) "move")
+           [(maybe-move board info (:target action)) limbo]
+         (= (:type action) "attack")
+           (maybe-attack board limbo info (:target action))
+         :else
+           (do
+             (println "Unknown action: " action)
+             [board limbo]))))
+   [board limbo]
+   actions))
+
+(defn update-limbo [board limbo]
+  ; take out the entities ready for release ...
+  (let [[release-candidates new-limbo] (release-from-limbo (advance-limbo-time limbo))]
+    ; ... only for them to be thrown back to limbo if there's no room in the mortal world
+    (reduce (fn [[board limbo] candidate]
+              (if-let [{:keys [x y]} (empty-spawn-cell board)]
+                 [(put-board board x y
+                             (cons (<-limbo candidate)
+                                   (get-board board x y [])))
+                  limbo]
+                 [board
+                  (add-to-limbo limbo candidate (:time-in-limbo candidate))]))
+            [board new-limbo]
+            release-candidates)))
+
 (defn step-world [board actions limbo]
    (let [actions (sort (fn [a b] (< (:timestamp a) (:timestamp b))) (vals actions))]
-      (reduce
-       (fn [[board limbo] action]
-         ;(println "ACTION " action)
-         (let [info (find-named board (:name action))]
-           (cond
-             (nil? info)
-               [board limbo]
-             (= (:type action) "move")
-               [(maybe-move board info (:target action)) limbo]
-             (= (:type action) "attack")
-               (maybe-attack board limbo info (:target action))
-             :else
-               (do
-                 (println "Unknown action: " action)
-                 [board limbo]))))
-       [board limbo]
-       actions)))
+     (->> (resolve-actions board actions limbo)
+          (apply update-limbo))))
 
 ;;; World time
 
@@ -343,7 +380,7 @@
       (let [turn-start (timestamp)
             ignore (monsters-think)
             turn-end (+ turn-start @turn-duration)]
-         (Thread/sleep (max 10 (- (timestamp) turn-end)))
+         (Thread/sleep (max 10 (- turn-end (timestamp))))
          (recur))))
 
 (defonce game-time
