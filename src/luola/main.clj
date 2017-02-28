@@ -176,9 +176,11 @@
    (let [actions (sort (fn [a b] (< (:timestamp a) (:timestamp b))) (vals actions))]
       (reduce
          (fn [board action]
-            ;(println "ACTION " action)
+            (println "ACTION " action)
             (let [info (find-named board (:name action))]
                (cond
+                  (nil? info)
+                    board
                   (= (:type action) "move")
                     (maybe-move board info (:target action))
                   (= (:type action) "attack")
