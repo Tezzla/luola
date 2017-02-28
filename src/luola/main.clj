@@ -31,16 +31,12 @@
 (defn alter-world! [op]
    (swap! world
       (fn [[turn board moves limbo]]
-        (conj (op turn board moves) limbo))))
+        (op turn board moves limbo))))
 
-(defn alter-world-and-deliver! [op]
-   (swap! world
-      (fn [[turn board moves limbo]]
-        (let [[_ new-board _ _ :as new-state] (op turn board moves limbo)
-              old-promise (next-board-state-promise)]
-          (reset! next-board (promise))
-          (deliver old-promise new-board)
-          new-state))))
+(defn deliver-next-board-state! [[_ new-board _ _ :as state]]
+  (let [old-promise (next-board-state-promise)]
+    (reset! next-board (promise))
+    (deliver old-promise new-board)))
 
 (defonce turn-duration (atom 412)) ;; in ms
 
@@ -50,7 +46,7 @@
          (reset! turn-duration ms)
          true)
       false))
-            
+
 (defn uuid []
   (str (java.util.UUID/randomUUID)))
 
@@ -148,8 +144,8 @@
 
 (defn set-action-proposal! [actor action]
    (alter-world!
-      (fn [turn board moves]
-         [turn board (assoc moves (:name actor) action)])))
+      (fn [turn board moves limbo]
+         [turn board (assoc moves (:name actor) action) limbo])))
 
 (defn fold-named [op state board]
    (reduce
@@ -309,8 +305,8 @@
       (if (= (nth bestish 0) 1000)
          (rand-nth opts)
          bestish)))
-         
-         
+
+
 
 (defn monster-action [monster board player-distance-map x y]
   (let [[distance x y direction] (bestish-direction player-distance-map x y)
@@ -335,13 +331,14 @@
 (defn time-ticker []
    (loop []
       ;(println "Turn " (turn) "ends.")
-      (alter-world-and-deliver!
-         (fn [turn board moves limbo]
-           (let [[new-board new-limbo] (step-world board moves limbo)]
-             [(+ turn 1)
-              new-board
-              {}
-              new-limbo])))
+     (-> (alter-world!
+          (fn [turn board moves limbo]
+            (let [[new-board new-limbo] (step-world board moves limbo)]
+              [(+ turn 1)
+               new-board
+               {}
+               new-limbo])))
+         (deliver-next-board-state!))
       ;; todo, substract this from sleep
       (monsters-think)
       (Thread/sleep @turn-duration)
@@ -408,7 +405,7 @@
    (maybe-add-thing! name thing empty-pos))
   ([name thing pos-fn]
    (alter-world!
-    (fn [turn board actions]
+    (fn [turn board actions limbo]
       (if (find-named board name)
         [turn board actions]
         (let [[x y :as pos] (pos-fn board)]
@@ -418,7 +415,7 @@
                         (cons thing
                               (get-board board x y [])))
              actions]
-            [turn board actions])))))))
+            [turn board actions limbo])))))))
 
 (defn maybe-add-player! [name pass]
   (maybe-add-thing! name
@@ -485,9 +482,10 @@
 (def maze-level (slurp (io/resource "maze.level")))
 
 (defn reset-game! []
+   (reset! next-board (promise))
    (alter-world!
-      (fn [_ _ _]
-         [1 (parse-board initial-level) {}])))
+      (fn [_ _ _ _]
+         [1 (parse-board initial-level) {} []])))
 
 
 (defn unparse-board [board player]
@@ -565,7 +563,7 @@
          (GET "/turn-duration" []
             :summary "get turn duration in ms"
             (ok (str @turn-duration)))
-         
+
          (PUT "/turn-duration" []
             :query-params [value :- s/Int, pass :- s/Str]
             (if (= pass @master-password)
@@ -573,7 +571,7 @@
                   (reset! turn-duration value)
                   (ok "done"))
                (ok "no")))
-              
+
          (GET "/board" []
             :query-params [name :- s/Str]
             (ok (unparse-board (board) name)))
@@ -619,9 +617,8 @@
       (reset! server nil)))
 
 (defn start-luola [handler conf]
-   (when server
+   (when @server
       (stop-server))
-   (stop-server)
    (println "starting server")
    (reset! server (jetty/run-jetty api-handler conf))
    (when server
