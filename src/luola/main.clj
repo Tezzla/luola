@@ -13,15 +13,23 @@
    (:gen-class))
 
 (defonce world
-   (atom [1 {} {}]))
+   (atom [1 {} {} (promise)]))
 
 (defn turn [] (nth @world 0))
 (defn board [] (nth @world 1))
+(defn next-board-state-promise [] (nth @world  3))
 
 (defn alter-world! [op]
    (swap! world
-      (fn [[turn board moves]]
-         (op turn board moves))))
+      (fn [[turn board moves next-state-promise]]
+        (conj (op turn board moves) next-state-promise))))
+
+(defn alter-world-and-deliver! [op]
+   (swap! world
+      (fn [[turn board moves next-state-promise]]
+        (let [[_ new-board _ :as new-state] (op turn board moves)]
+          (deliver next-state-promise new-board)
+          (conj new-state (promise))))))
 
 (def turn-duration 500) ;; in ms
 
@@ -261,11 +269,11 @@
 (defn time-ticker []
    (loop []
       ;(println "Turn " (turn) "ends.")
-      (alter-world!
+      (alter-world-and-deliver!
          (fn [turn board moves]
             [(+ turn 1)
-               (step-world board moves)
-               {}]))
+             (step-world board moves)
+             {}]))
       ;; todo, substract this from sleep
       (monsters-think)
       (Thread/sleep turn-duration)
@@ -480,6 +488,10 @@
          (GET "/board" []
             :query-params [name :- s/Str]
             (ok (unparse-board (board) name)))
+
+         (GET "/next-board" []
+            :query-params [name :- s/Str]
+            (ok (unparse-board @(next-board-state-promise) name)))
 
          (GET "/add-player" []
             :query-params [name :- s/Str, pass :- s/Str]
