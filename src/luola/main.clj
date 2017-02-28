@@ -33,7 +33,7 @@
       (fn [[turn board moves limbo]]
         (op turn board moves limbo))))
 
-(defn deliver-next-board-state! [[_ new-board _ _ :as state]]
+(defn deliver-next-board-state! [[_ new-board _ _]]
   (let [old-promise (next-board-state-promise)]
     (reset! next-board (promise))
     (deliver old-promise new-board)))
@@ -402,11 +402,11 @@
 
 (defn maybe-add-thing!
   ([name thing]
-   (maybe-add-thing! name thing empty-pos))
-  ([name thing pos-fn]
+   (maybe-add-thing! name thing empty-pos (fn [board _ name] (find-named board name))))
+  ([name thing pos-fn already-exists?]
    (alter-world!
     (fn [turn board actions limbo]
-      (if (find-named board name)
+      (if (already-exists? board limbo name)
         [turn board actions]
         (let [[x y :as pos] (pos-fn board)]
           (if pos
@@ -421,12 +421,15 @@
   (maybe-add-thing! name
                     (make-player name pass)
                     #(if-let [pos (empty-spawn-cell %)]
-                       [(:x pos) (:y pos)])))
+                       [(:x pos) (:y pos)])
+                    (fn [board limbo name]
+                      (or ((->> limbo (map :name) (set)) name)
+                          (find-named board name)))))
 
 (defn maybe-add-monster! []
    (let [name (uuid)]
       (maybe-add-thing! name
-         (make-monster name)))
+                        (make-monster name)))
    true)
 
 (def initial-level
@@ -475,10 +478,10 @@
 (def maze-level (slurp (io/resource "maze.level")))
 
 (defn reset-game! []
-   (reset! next-board (promise))
-   (alter-world!
-      (fn [_ _ _ _]
-         [1 (parse-board initial-level) {} []])))
+  (deliver-next-board-state! [nil nil nil nil])
+  (alter-world!
+   (fn [_ _ _ _]
+     [1 (parse-board initial-level) {} []])))
 
 
 (defn unparse-board [board player]
