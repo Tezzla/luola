@@ -340,9 +340,11 @@
                new-limbo])))
          (deliver-next-board-state!))
       ;; todo, substract this from sleep
-      (monsters-think)
-      (Thread/sleep @turn-duration)
-      (recur)))
+      (let [turn-start (timestamp)
+            ignore (monsters-think)
+            turn-end (+ turn-start @turn-duration)]
+         (Thread/sleep (max 10 (- (timestamp) turn-end)))
+         (recur))))
 
 (defonce game-time
    (let [thread (Thread. time-ticker)]
