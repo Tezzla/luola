@@ -206,9 +206,8 @@
 (defn advance-limbo-time [limbo]
   (map #(update % :turns-in-limbo dec) limbo))
 
-; limbo -> [released new-limbo]
 (defn release-from-limbo [limbo]
-  [(sort-by :turns-in-limbo (filter #(< (:turns-in-limbo %) 0) limbo))
+  [(filter #(< (:turns-in-limbo %) 0) limbo)
    (remove #(< (:turns-in-limbo %) 0) limbo)])
 
 (def player-turns-in-limbo 10)
@@ -225,7 +224,6 @@
 (defn enemy-can-move? [board x y]
    (let [val (get-board board x y [])]
      (or (empty-cell? (first val))
-         (spawn-cell? (first val))
          (monster? (first val))
          (item? (first val)))))
 
@@ -545,7 +543,7 @@
  #.............................................#
  #:...........................................:#
  ###############################################"
-
+ 
 "#############################################################################################################################################################
  #::::::.....................................................................................................................................................#
  #::::::.................................................................................................#...................................................#
@@ -655,6 +653,15 @@
 (defn leaderboard [board]
   (sort-by :value > (map player->leaderboard-entry (players board))))
 
+(defn safe-name [s]
+   (clojure.string/replace s #"[^a-zA-ZäöÄÖ0-9_-]" "_"))
+
+(defn leaderboard-html []
+   (reduce
+      (fn [top node]
+         (str top (safe-name (:name node)) ": " (:value node) "<br>\n"))
+      "" (leaderboard (board))))
+
 ;;; Handler
 
 (defn status-no-player []
@@ -729,8 +736,9 @@
                (do (set-action-proposal! player (make-action player action target))
                    (ok))
                (status-no-player))))
-         (GET "/leaderboard" []
-           (ok (leaderboard (board)))))))
+      
+        (GET "/leaderboard" []
+           (ok (leaderboard-html))))))
 
 
 ;;; Startup and shutdown
