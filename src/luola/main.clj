@@ -726,6 +726,7 @@
 
 (defn go []
    (println "Go!")
+   (reset-game!)
    (start-server {:port 8080}))
 
 (defn -main [& args]
