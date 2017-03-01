@@ -316,7 +316,7 @@
                                    (get-board board x y [])))
                   limbo]
                  [board
-                  (add-to-limbo limbo candidate (:time-in-limbo candidate))]))
+                  (add-to-limbo limbo candidate (:turns-in-limbo candidate))]))
             [board new-limbo]
             release-candidates)))
 
