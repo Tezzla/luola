@@ -471,10 +471,12 @@
 
 
 ;; board name pass → nil | player-map
-(defn find-authorized-player [board name pass]
-   (let [info (find-named board name)]
-      (when (= (:pass (:player info)) pass)
-         (:player info))))
+(defn find-authorized-player [board limbo name pass]
+  (let [info (or (find-named board name)
+                 (when-let [player (first (filter #(= (:name %) name) limbo))]
+                   {:player player}))]
+    (when (= (:pass (:player info)) pass)
+      (:player info))))
 
 (defn maybe-add-thing!
   ([name thing]
@@ -723,20 +725,23 @@
             :query-params [name :- s/Str, pass :- s/Str]
             (do
                (maybe-add-player! name pass)
-               (if-let [player (find-authorized-player (board) name pass)]
-                 (ok (unparse-board (board) (:name player)))
-                 (status (ok "unacceptable") 403))))
+               (let [[_ board _ limbo] @world]
+                 (if-let [player (find-authorized-player board limbo name pass)]
+                   (ok (unparse-board board (:name player)))
+                   (status (ok "unacceptable") 403)))))
 
          (GET "/player" []
            :query-params [name :- s/Str, pass :- s/Str]
-           (let [player (find-authorized-player (board) name pass)]
+           (let [[_ board _ limbo] @world
+                 player (find-authorized-player board limbo name pass)]
              (if player
                (ok player)
                (status-no-player))))
 
          (GET "/act" []
            :query-params [name :- s/Str, pass :- s/Str, action :- PlayerAction, {target :- ActionTarget nil}]
-           (let [player (find-authorized-player (board) name pass)]
+           (let [[_ board _ limbo] @world
+                 player (find-authorized-player board limbo name pass)]
              (if player
                (do (set-action-proposal! player (make-action player action target))
                    (ok))
