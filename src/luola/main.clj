@@ -501,7 +501,8 @@
                        [(:x pos) (:y pos)])
                     (fn [board limbo name]
                       (or ((->> limbo (map :name) (set)) name)
-                          (find-named board name)))))
+                          (find-named board name))))
+   true)
 
 (defn maybe-add-monster! []
    (let [name (uuid)]
@@ -603,7 +604,15 @@
          [1 (parse-board (nth levels (max 0 (min n (count levels))))) {} []]))
    :ok)
 
-
+(defn player-char [node name]
+   (cond
+      (= name "overview")
+         (first (.toUpperCase (:name node)))
+      (= name (:name node))
+         \@
+      :else
+         \P))
+   
 (defn unparse-board [board player]
    (loop [x 0 y 0 out []]
       (let [val (get-board board x y false)]
@@ -621,15 +630,14 @@
             (player-spawn-cell? (first val))
                (recur (+ x 1) y (cons \: out))
             (player? (first val))
-               (if (= player (:name (first val)))
-                  (recur (+ x 1) y (cons \@ out))
-                  (recur (+ x 1) y (cons \P out)))
+               (recur (+ x 1) y (cons (player-char (first val) player) out))
             (monster? (first val))
                (recur (+ x 1) y (cons \e out))
             (item? (first val))
                (recur (+ x 1) y (cons \$ out))
             :else
                (recur (+ x 1) y (cons \? out))))))
+
 
 ;;; Leaderboard
 
