@@ -10,6 +10,12 @@
       div#luolavisio {
         white-space: pre;
         font-family: monospace;
+        float: left;
+      }
+      div#leaderboard {
+        padding-left: 20px;
+        float: left;
+        font-family: monospace;
       }
       .enemy {
         color: OrangeRed;
@@ -31,6 +37,7 @@
   <body>
     <h1>Taistelu-urhojen luola!</h1>
     <div id="luolavisio"></div>
+    <div id="leaderboard"></div>
     <script type="text/javascript">
       function addEnhancedGraphicsTags(str) {
         return str.replace(new RegExp(/(e+)/, 'g'), "<span class='enemy'>$1</span>")
@@ -40,6 +47,20 @@
                   .replace(new RegExp(/(\$+)/, 'g'), "<span class='item'>$1</span>");
       }
 
+      function fetchLeaderboard(url, elementId, timeout) {
+        var recur = function() {
+          var req = new XMLHttpRequest();
+          req.open("GET", url, true);
+          req.onreadystatechange = function () {
+            if (req.readyState === XMLHttpRequest.DONE && req.status === 200) {
+              setTimeout(recur, timeout);
+              document.getElementById(elementId).innerHTML = req.responseText;
+            }
+          };
+          req.send();
+        };
+        recur();
+      }
       function fetchGameStateLoop(url, elementId) {
         var recur = function() {
           var req = new XMLHttpRequest();
@@ -59,7 +80,8 @@
         recur();
       }
 
-      fetchGameStateLoop("api/next-board?name=", "luolavisio");
+      fetchGameStateLoop("api/next-board?name=overview", "luolavisio");
+      fetchLeaderboard("api/leaderboard", "leaderboard", 500);
     </script>
   </body>
 </html>
