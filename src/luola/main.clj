@@ -483,14 +483,15 @@
    (alter-world!
     (fn [turn board actions limbo]
       (if (already-exists? board limbo name)
-        [turn board actions]
+        [turn board actions limbo]
         (let [[x y :as pos] (pos-fn board)]
           (if pos
             [turn
              (put-board board x y
                         (cons thing
                               (get-board board x y [])))
-             actions]
+             actions
+             limbo]
             [turn board actions limbo])))))))
 
 (defn maybe-add-player! [name pass]
@@ -640,27 +641,31 @@
 
 ;;; Leaderboard
 
-(defn players [board]
-  (map (comp first :cell) (player-cells board)))
+(defn players [board limbo]
+  (concat (map (comp #(assoc % :alive true) first :cell) (player-cells board))
+          (map #(assoc % :alive false) (filter player? limbo))))
 
 (defn player->leaderboard-entry [player]
   {:name  (:name player)
    :value (->> player
                :items
                (map :value)
-               (reduce +))})
+               (reduce +))
+   :alive (:alive player)})
 
-(defn leaderboard [board]
-  (sort-by :value > (map player->leaderboard-entry (players board))))
+(defn leaderboard [board limbo]
+  (sort-by :value > (map player->leaderboard-entry (players board limbo))))
 
 (defn safe-name [s]
    (clojure.string/replace s #"[^a-zA-ZäöÄÖ0-9_-]" "_"))
 
 (defn leaderboard-html []
-   (reduce
-      (fn [top node]
-         (str top (safe-name (:name node)) ": " (:value node) "<br>\n"))
-      "" (leaderboard (board))))
+  (reduce
+   (fn [top node]
+     (str top (safe-name (:name node)) ": " (:value node)
+          (when-not (:alive node)
+            " (RIP)") "<br>\n"))
+   "" (leaderboard (board) (limbo))))
 
 ;;; Handler
 
